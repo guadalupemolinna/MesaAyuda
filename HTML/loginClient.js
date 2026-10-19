@@ -9,22 +9,24 @@ formE1.addEventListener('submit', (event) => {
 	const formData = new FormData(formE1);
 	const data = Object.fromEntries(formData);
 	console.log('Application Server: Revisa el valor del form:');
-	console.log(data);
+
 
 	/*---
         Realiza validaciones en los datos del formulario antes de procesar
         */
 
-	if (data.id == '' || data.password == '') {
+     /*---Modificado para pto 1-- */
+
+	if (data.contacto == '' || data.password == '') {        
 		console.log('debe indicar usuario');
 		document.getElementById('resultado1').style.color = 'RED';
-		document.getElementById('resultado1').style.textAlign = 'center';
+		document.getElementById('resultado1').style.textAlign = 'center';       
 		document.getElementById('resultado1').textContent =
-			'Debe informar usuario y password para  completar el acceso';
+			'Debe informar correo y password para  completar el acceso';
 		return;
 	}
 
-	if (data.id == 'pec') {   /*--Fix hecho por  Germán Lombardi IS1-2025 */
+	if (data.contacto == 'pec@gmail.com') {   /*--Fix hecho por  Germán Lombardi IS1-2025 */
 		console.log('pec no es bienvenido en éste sistema');
 		const m = '<li>El usuario <pec> no es bienvenido en éste sistema</li>';
 		document.getElementById('resultado2').style.color = 'RED';
@@ -71,7 +73,7 @@ formE1.addEventListener('submit', (event) => {
         Crea estructuras para acceder a data del cliente
         */
 	    const login = {
-	        id: data.id,
+	        contacto: data.contacto,
 		    password: data.password
 		}	
 
@@ -86,9 +88,7 @@ formE1.addEventListener('submit', (event) => {
 
 
 	 	console.log('API REST:' + RESTAPI.loginCliente);
-	    console.log(login);
-	    console.log('login(' + JSON.stringify(login) + ')');
-	    console.log('options ' + JSON.stringify(options));
+		console.log('Login enviado para:', data.contacto);
     	var API = RESTAPI.loginCliente;
 	    var APIoptions = options;
 
@@ -138,7 +138,7 @@ formE1.addEventListener('submit', (event) => {
 			console.log(
 				'Datos en respuesta del application server=' + JSON.stringify(users)
 			);
-			console.log('users.response=' + users.password);
+			console.log('users.response=' + users.response);
 			if (users.response == 'OK') {
 				//<==Habilitar esto para dejar que el API REST verifique sin exponer la password
 				console.log('La password es correcta');

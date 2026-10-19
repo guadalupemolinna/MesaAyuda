@@ -99,59 +99,47 @@ app.get('/api/cliente', (req,res) => {
   /api/loginCliente
   Esta API permite acceder a un cliente por ID y comparar la password pasada en un JSON en el cuerpo con la indicada en el DB
 */  
-app.post('/api/loginCliente', (req,res) => {
+/* MODIFICACION PTO 1:Busca en la tabla cliente el registro cuyo contacto coincide con el correo recibido.*/
 
-    const { id } = req.body;
+app.post('/api/loginCliente', async (req,res) => {
+
+    const { contacto } = req.body;
     const {password} = req.body;
 
-    console.log("loginCliente: id("+id+") password ("+password+")");
+
+    console.log("loginCliente: contacto("+contacto+")"); /*-MODIFICADO pto 1*/
 
     if (!password) {
         res.status(400).send({response : "ERROR" , message : "Password no informada"});
         return;
     }    
-    if (!id) {
-        res.status(400).send({response : "ERROR" , message : "id no informado"});
+    if (!contacto) {
+        res.status(400).send({response : "ERROR" , message : "correo no informado"}); /*-MODIFICADO pto 1*/
         return;
-    }    
+    }  
+        try {
+        const clientes = await scanDb(contacto);
+        const cliente = clientes[0];
 
-    let getClienteByKey = function () {
-        var params = {
-            TableName: "cliente",
-            Key: {
-                "id" : id
-            }
-        };
-        docClient.get(params, function (err, data) {
-            if (err) {
-                res.status(400).send(JSON.stringify({response : "ERROR", message : "DB access error "+err}));
-            }
-            else {
-                if (Object.keys(data).length == 0) {
-                    res.status(400).send({response : "ERROR" , message : "Cliente invalido"});
-                } else {
-                    const paswd=jsonParser('password',data.Item);
-                    const activo=jsonParser('activo',data.Item);
-                    const id=jsonParser('id',data.Item);
-                    const contacto=jsonParser('contacto',data.Item);
-                    if (password == paswd) {
-                        if (activo == true) {
-                            const nombre=jsonParser('nombre',data.Item);
-                            const fecha_ultimo_ingreso=jsonParser('fecha_ultimo_ingreso',data.Item);
-                            res.status(200).send(JSON.stringify({response : "OK", "id" : id, "nombre" : nombre, "contacto" : contacto, "fecha_ultimo_ingreso": fecha_ultimo_ingreso}));    
-                        } else {
-                            res.status(400).send(JSON.stringify({response : "ERROR", message : "Cliente no activo"}));    
-                        }
-                    } else {
-                       res.status(400).send(JSON.stringify({response : "ERROR" , message : "usuario incorrecto"}));
-                    }    
-            }    
-            }
-        })
+        if (!cliente ||
+            cliente.password !== password ||
+            cliente.activo !== true) {
+            return res.status(400).send({ response: "invalido" });
+        }
+
+        return res.status(200).send({
+            response: "OK",
+            id: cliente.id,
+            nombre: cliente.nombre,
+            contacto: cliente.contacto,
+            fecha_ultimo_ingreso: cliente.fecha_ultimo_ingreso
+        });
+    } catch (error) {
+        console.error("Error al buscar cliente");
+        return res.status(500).send({ response: "ERROR" });
     }
-    getClienteByKey();
-
-});
+}); 
+    
 
 
 /*-----------
@@ -194,7 +182,7 @@ async function scanDb(contacto) {
     const paramsScan = { // ScanInput
       TableName: "cliente", // required
       Select: "ALL_ATTRIBUTES" || "ALL_PROJECTED_ATTRIBUTES" || "SPECIFIC_ATTRIBUTES" || "COUNT",
-      FilterExpression : 'id = :contacto',
+      FilterExpression : 'contacto = :contacto',
       ExpressionAttributeValues : {':contacto' : scanKey}
     };      
     var objectPromise = await docClient.scan(paramsScan).promise().then((data) => {
@@ -212,7 +200,7 @@ app.post('/api/addCliente', (req,res) => {
     const {contacto} = req.body;
     const {password} = req.body;
     const {nombre}   = req.body;
-    console.log("addCliente: contacto("+contacto+") nombre("+nombre+") password("+password+")");
+    console.log("addCliente: contacto("+contacto+") nombre("+nombre+"))");
     
     if (!password) {
         res.status(400).send({response : "ERROR" , message: "Password no informada"});
@@ -241,7 +229,8 @@ app.post('/api/addCliente', (req,res) => {
         hoy = dd + '/' + mm + '/' + yyyy;
     
         const newCliente = {
-         id                    : contacto,
+         id: crypto.randomUUID(),
+         contacto              : contacto,
          nombre                : nombre,
          password              : password,
          activo                : true,
@@ -282,7 +271,7 @@ app.post('/api/updateCliente', (req,res) => {
     var activo = ((req.body.activo+'').toLowerCase() === 'true')
     var registrado = ((req.body.registrado+'').toLowerCase() === 'true')
 
-    console.log("updateCliente: id("+id+") nombre("+nombre+") password("+password+") activo("+activo+") registrado("+registrado+")");
+    console.log("updateCliente: id("+id+") nombre("+nombre+") activo("+activo+") registrado("+registrado+")");
 
     if (!id) {
         res.status(400).send({response : "ERROR" , message: "Id no informada"});
