@@ -53,14 +53,8 @@ let awsConfig = {
     "accessKeyId"    : accessKeyId, 
     "secretAccessKey": secretAccessKey
 };
-
 AWS.config.update(awsConfig);
-console.log("Servidor listo!");
 let docClient = new AWS.DynamoDB.DocumentClient();
-
-/*----
-   Application server in LISTEN mode
-*/
 
 app.listen(
     PORT,
@@ -101,8 +95,7 @@ app.get('/api/cliente', (req,res) => {
 */  
 /* MODIFICACION PTO 1:Busca en la tabla cliente el registro cuyo contacto coincide con el correo recibido.*/
 
-app.post('/api/loginCliente', async (req,res) => {
-
+app.post('/api/loginCliente', async (req, res) => {
     const { contacto } = req.body;
     const {password} = req.body;
 
@@ -140,56 +133,6 @@ app.post('/api/loginCliente', async (req,res) => {
     }
 }); 
     
-
-
-/*-----------
-  /api/getCliente
-  Esta API permite acceder a un cliente dado su id
-*/
-
-app.post('/api/getCliente/:id', (req,res) => {
-    const { id } = req.params;
-    console.log("getCliente: id("+id+")");
-    var params = {
-        TableName: "cliente",
-        Key: {
-            "id" : id
-            //test use "id": "0533a95d-7eef-4c6b-b753-1a41c9d1fbd0"   
-             }
-        };
-    docClient.get(params, function (err, data) {
-        if (err)  {
-            res.status(400).send(JSON.stringify({response : "ERROR", message : "DB access error "+ null}));
-        } else {
-
-            if (Object.keys(data).length != 0) {
-               res.status(200).send(JSON.stringify({"response":"OK","cliente" : data.Item}),null,2);
-            } else {
-               res.status(400).send(JSON.stringify({"response":"ERROR",message : "Cliente no existe"}),null,2);
-            }
-        }    
-    })
-
-
-} );
-
-/*---------
-Función para realizar el SCAN de un DB de cliente usando contacto como clave para la búsqueda (no es clave formal del DB)
-*/
-async function scanDb(contacto) {
-    var docClient = new AWS.DynamoDB.DocumentClient();
-    const scanKey=contacto;
-    const paramsScan = { // ScanInput
-      TableName: "cliente", // required
-      Select: "ALL_ATTRIBUTES" || "ALL_PROJECTED_ATTRIBUTES" || "SPECIFIC_ATTRIBUTES" || "COUNT",
-      FilterExpression : 'contacto = :contacto',
-      ExpressionAttributeValues : {':contacto' : scanKey}
-    };      
-    var objectPromise = await docClient.scan(paramsScan).promise().then((data) => {
-          return data.Items 
-    });  
-    return objectPromise;
-}
 
 /*----
 addCliente
@@ -415,6 +358,20 @@ app.post('/api/resetCliente', (req,res) => {
 /*---------
 Función para realizar el SCAN de un DB de cliente usando contacto como clave para la búsqueda (no es clave formal del DB)
 */
+async function scanDb(contacto) {
+    var docClient = new AWS.DynamoDB.DocumentClient();
+    const scanKey=contacto;
+    const paramsScan = { // ScanInput
+      TableName: "cliente", // required
+      Select: "ALL_ATTRIBUTES" || "ALL_PROJECTED_ATTRIBUTES" || "SPECIFIC_ATTRIBUTES" || "COUNT",
+      FilterExpression : 'contacto = :contacto',
+      ExpressionAttributeValues : {':contacto' : scanKey}
+    };      
+    var objectPromise = await docClient.scan(paramsScan).promise().then((data) => {
+          return data.Items 
+    });  
+    return objectPromise;
+}
 async function scanDbTicket(clienteID) {
     var docClient = new AWS.DynamoDB.DocumentClient();
     const scanKey=clienteID;

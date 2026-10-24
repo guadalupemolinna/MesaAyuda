@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Restablecer contraseña</title>
+
+    <style>
+        label {
+            font-size: 18px;
+        }
+
+        form {
+            width: 500px;
+            border: 1px solid black;
+            background-color: #d8f7cf;
+        }
+
+        input {
+            margin: 7px;
+            padding: 2px;
+        }
+
+        .txt {
+            display: inline-block;
+            width: 80%;
+        }
+    </style>
+</head>
+
+<body>
+    <center>
+        <img
+            src="HelpDeskGirl.png"
+            alt="Nuestra imagen corporativa"
+            style="width: 200px; height: 150px;"
+        >
+
+        <h1>Sistema de Mesa de Ayuda</h1>
+        <h2>Restablecer contraseña</h2>
+    </center>
+
+    <center>
+        <form class="form" method="POST">
+            <br>
+
+            <table>
+                <tr>
+                    <td>
+                        <label for="contacto">Correo electrónico</label>
+                    </td>
+                </tr>
+                <tr>
+                    <td>
+                        <input
+                            id="contacto"
+                            class="txt"
+                            name="contacto"
+                            type="email"
+                            placeholder="Correo electrónico"
+                            required
+                        >
+                    </td>
+                </tr>
+
+                <tr><td>&nbsp;</td></tr>
+
+                <tr>
+                    <td>
+                        <label for="password">Nueva contraseña</label>
+                    </td>
+                </tr>
+                <tr>
+                    <td>
+                        <input
+                            id="password"
+                            class="txt"
+                            name="password"
+                            type="password"
+                            placeholder="Nueva contraseña"
+                            required
+                        >
+                    </td>
+                </tr>
+
+                <tr><td>&nbsp;</td></tr>
+
+                <tr>
+                    <td>
+                        <label for="passwordConfirm">Repetir contraseña</label>
+                    </td>
+                </tr>
+                <tr>
+                    <td>
+                        <input
+                            id="passwordConfirm"
+                            class="txt"
+                            name="passwordConfirm"
+                            type="password"
+                            placeholder="Repetir contraseña"
+                            required
+                        >
+                    </td>
+                </tr>
+
+                <tr>
+                    <td><span id="resultado"></span></td>
+                </tr>
+            </table>
+
+            <button type="submit">Cambiar contraseña</button>
+            <p><a href="loginClient.html">Volver al login</a></p>
+        </form>
+    </center>
+
+    <script src="resetClient.js" type="module"></script>
+</body>
+</html>
