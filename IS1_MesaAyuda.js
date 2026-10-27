@@ -175,7 +175,6 @@ app.post('/api/addCliente', (req,res) => {
          id: crypto.randomUUID(),
          contacto              : contacto,
          nombre                : nombre,
-         password              : password,
          activo                : true,
          registrado            : true,
          primer_ingreso        : false,
