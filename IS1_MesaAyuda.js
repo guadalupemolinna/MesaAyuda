@@ -12,40 +12,29 @@
 
 import express from 'express';
 import crypto from 'crypto';
+import cors from 'cors';
+import AWS from 'aws-sdk';
+import accessKeyId from '../accessKeyId.js';
+import secretAccessKey  from '../secretAccessKey.js';
+
 console.log("Comenzando servidor");
-
-// const crypto = require('crypto');
 console.log("crypto Ok!");
-
-//const express = require('express');
-//console.log("express Ok!");
 
 const app = express();
 console.log("express ready!");
 
 const PORT = 8080;
 
-import cors from 'cors';
-
-//const cors = require('cors');
-console.log("cors ok!");
-
+// ==========================================
+// MIDDLEWARES (Procesadores de datos)
+// DEBEN IR AQUÍ, ANTES DE CUALQUIER RUTA
+// ==========================================
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use(cors());
 console.log("CORS ready!");
 
-import AWS from 'aws-sdk'
-//var AWS = require('aws-sdk');
 console.log("aws-sdk ready!");
-
-/*----
-Acquire critical security resources from an external file out of the path
-*/
-
-//const accessKeyId = require('../accessKeyId.js');
-//const secretAccessKey = require('../secretAccessKey.js');
-
-import accessKeyId from '../accessKeyId.js';
-import secretAccessKey  from '../secretAccessKey.js';
 
 let awsConfig = {
     "region"         : "us-east-1",
@@ -56,12 +45,149 @@ let awsConfig = {
 AWS.config.update(awsConfig);
 let docClient = new AWS.DynamoDB.DocumentClient();
 
-app.listen(
-    PORT,
-    () => console.log(`Servidor listo en http://localhost:${PORT}`)
-);
+// ==========================================
+// 1. ESTADÍSTICA DE TICKETS (/resumenTickets)
+// ==========================================
+app.all('/resumenTickets', async (req, res) => {
+  // 1. Extracción de parámetros flexible (admite mayúsculas o minúsculas)
+  const idUsuario = req.method === 'GET' 
+    ? (req.query.ID || req.query.id || req.query.contacto) 
+    : (req.body?.ID || req.body?.id || req.body?.contacto);
 
-app.use(express.json());
+  const password = req.method === 'GET' 
+    ? (req.query.PASSWORD || req.query.password) 
+    : (req.body?.PASSWORD || req.body?.password);
+
+  if (!idUsuario || !password) {
+    return res.status(400).json({ response: 'Error', mensaje: 'Faltan credenciales (ID/contacto y PASSWORD)' });
+  }
+
+  try {
+    // 2. Validar cliente y contraseña en la tabla 'cliente'
+    const paramsCliente = {
+      TableName: 'cliente',
+      FilterExpression: 'contacto = :c OR id = :id',
+      ExpressionAttributeValues: {
+        ':c': String(idUsuario),
+        ':id': String(idUsuario)
+      }
+    };
+
+    const dataCliente = await docClient.scan(paramsCliente).promise();
+    const cliente = dataCliente.Items && dataCliente.Items[0];
+
+    if (!cliente || cliente.password !== password) {
+      return res.status(401).json({ response: 'Error', mensaje: 'Credenciales inválidas' });
+    }
+
+    // 3. Obtener todos los clientes y tickets para armar el resumen
+    const [todosClientes, todosTickets] = await Promise.all([
+      docClient.scan({ TableName: 'cliente' }).promise(),
+      docClient.scan({ TableName: 'ticket' }).promise()
+    ]);
+
+    // 4. Mapear con tolerancia a distintos nombres de atributo en DynamoDB
+    const resumen = (todosClientes.Items || []).map(cli => {
+      const cliId = String(cli.id || cli.clienteID || '');
+      const cliContacto = String(cli.contacto || '');
+
+      const ticketsDelCliente = (todosTickets.Items || []).filter(t => {
+        const tCliente = String(t.clienteID || t.cliente || '');
+        return (tCliente !== '' && (tCliente === cliId || tCliente === cliContacto));
+      });
+      
+      return {
+        clienteID: cli.id || cli.clienteID,
+        contacto: cli.contacto,
+        cantidadTickets: ticketsDelCliente.length,
+        tickets: ticketsDelCliente.map(t => ({
+          ticketID: t.id || t.ticketID,
+          fechaApertura: t.ultima_fecha || t.fecha || t.fechaApertura,
+          estado: t.estado
+        }))
+      };
+    });
+
+    return res.json({
+      response: 'Ok',
+      resumen: resumen
+    });
+
+  } catch (error) {
+    console.error('Error en /resumenTickets:', error);
+    return res.status(500).json({ response: 'Error', mensaje: error.message });
+  }
+});
+
+
+// ==========================================
+// 2. ACCESO A TICKETS (/getTicket)
+// ==========================================
+app.all('/getTicket', async (req, res) => {
+  // Extraer parámetros según sea GET o POST
+  const idUsuario = req.method === 'GET' ? (req.query.ID || req.query.contacto) : req.body.ID;
+  const password = req.method === 'GET' ? req.query.PASSWORD : req.body.PASSWORD;
+  const ticketID = req.method === 'GET' ? req.query.TICKET : req.body.TICKET;
+
+  if (!idUsuario || !password || !ticketID) {
+    return res.status(400).json({ response: 'Error', mensaje: 'Faltan parámetros (ID, PASSWORD, TICKET)' });
+  }
+
+  try {
+    // 1. Validar si el cliente existe y su contraseña es correcta
+    const paramsCliente = {
+      TableName: 'cliente',
+      FilterExpression: 'contacto = :c OR id = :id',
+      ExpressionAttributeValues: {
+        ':c': idUsuario,
+        ':id': idUsuario
+      }
+    };
+
+    const dataCliente = await docClient.scan(paramsCliente).promise();
+    const cliente = dataCliente.Items && dataCliente.Items[0];
+
+    // Requisito del TP: Si el cliente no existe/inválido, retornar error SIN consultar el ticket
+    if (!cliente || cliente.password !== password) {
+      return res.status(401).json({ response: 'Error', mensaje: 'Cliente no existe o contraseña incorrecta' });
+    }
+
+    // 2. Consultar el ticket solicitado
+    const paramsTicket = {
+      TableName: 'ticket',
+      KeyConditionExpression: 'id = :tid',
+      ExpressionAttributeValues: {
+        ':tid': ticketID
+      }
+    };
+
+    // Si la tabla usa scan por no conocer la clave primaria exacta:
+    const dataTicket = await docClient.scan({
+      TableName: 'ticket',
+      FilterExpression: 'id = :tid OR ticketID = :tid',
+      ExpressionAttributeValues: { ':tid': ticketID }
+    }).promise();
+
+    const ticketEncontrado = dataTicket.Items && dataTicket.Items[0];
+
+    if (!ticketEncontrado) {
+      return res.status(444).json({ response: 'Error', mensaje: 'El ticket especificado no existe' });
+    }
+
+    // 3. Retornar los datos combinados
+    return res.json({
+      response: 'Ok',
+      clienteID: cliente.id,
+      contacto: cliente.contacto,
+      ticket: ticketEncontrado
+    });
+
+  } catch (error) {
+    console.error('Error en /getTicket:', error);
+    return res.status(500).json({ response: 'Error', mensaje: error.message });
+  }
+});
+
 
 /*-------------------------------------------------------------------------------------------
                             Funciones y Servicios
@@ -584,3 +710,7 @@ app.post('/api/updateTicket', (req,res) => {
 
 });
 /*-------------------------------------------------[ Fin del API REST ]-------------------------------------------------------------*/
+app.listen(
+    PORT,
+    () => console.log(`Servidor listo en http://localhost:${PORT}`)
+);

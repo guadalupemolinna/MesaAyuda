@@ -62,6 +62,7 @@ app.listen(
 );
 
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 app.get('/api/cliente', (req,res) => {
     res.status(200).send({response : "OK", message : "API Ready"});
