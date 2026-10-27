@@ -1,4 +1,3 @@
-
 /*-----------------------------------------------------------------------------------------------------------------
 //*  MesaAyuda.js debe copiarse al directorio del proyecto express como index.js
 //*
@@ -25,10 +24,6 @@ console.log("express ready!");
 
 const PORT = 8080;
 
-// ==========================================
-// MIDDLEWARES (Procesadores de datos)
-// DEBEN IR AQUÍ, ANTES DE CUALQUIER RUTA
-// ==========================================
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cors());
@@ -45,153 +40,7 @@ let awsConfig = {
 AWS.config.update(awsConfig);
 let docClient = new AWS.DynamoDB.DocumentClient();
 
-// ==========================================
-// 1. ESTADÍSTICA DE TICKETS (/resumenTickets)
-// ==========================================
-app.all('/resumenTickets', async (req, res) => {
-  // 1. Extracción de parámetros flexible (admite mayúsculas o minúsculas)
-  const idUsuario = req.method === 'GET' 
-    ? (req.query.ID || req.query.id || req.query.contacto) 
-    : (req.body?.ID || req.body?.id || req.body?.contacto);
-
-  const password = req.method === 'GET' 
-    ? (req.query.PASSWORD || req.query.password) 
-    : (req.body?.PASSWORD || req.body?.password);
-
-  if (!idUsuario || !password) {
-    return res.status(400).json({ response: 'Error', mensaje: 'Faltan credenciales (ID/contacto y PASSWORD)' });
-  }
-
-  try {
-    // 2. Validar cliente y contraseña en la tabla 'cliente'
-    const paramsCliente = {
-      TableName: 'cliente',
-      FilterExpression: 'contacto = :c OR id = :id',
-      ExpressionAttributeValues: {
-        ':c': String(idUsuario),
-        ':id': String(idUsuario)
-      }
-    };
-
-    const dataCliente = await docClient.scan(paramsCliente).promise();
-    const cliente = dataCliente.Items && dataCliente.Items[0];
-
-    if (!cliente || cliente.password !== password) {
-      return res.status(401).json({ response: 'Error', mensaje: 'Credenciales inválidas' });
-    }
-
-    // 3. Obtener todos los clientes y tickets para armar el resumen
-    const [todosClientes, todosTickets] = await Promise.all([
-      docClient.scan({ TableName: 'cliente' }).promise(),
-      docClient.scan({ TableName: 'ticket' }).promise()
-    ]);
-
-    // 4. Mapear con tolerancia a distintos nombres de atributo en DynamoDB
-    const resumen = (todosClientes.Items || []).map(cli => {
-      const cliId = String(cli.id || cli.clienteID || '');
-      const cliContacto = String(cli.contacto || '');
-
-      const ticketsDelCliente = (todosTickets.Items || []).filter(t => {
-        const tCliente = String(t.clienteID || t.cliente || '');
-        return (tCliente !== '' && (tCliente === cliId || tCliente === cliContacto));
-      });
-      
-      return {
-        clienteID: cli.id || cli.clienteID,
-        contacto: cli.contacto,
-        cantidadTickets: ticketsDelCliente.length,
-        tickets: ticketsDelCliente.map(t => ({
-          ticketID: t.id || t.ticketID,
-          fechaApertura: t.ultima_fecha || t.fecha || t.fechaApertura,
-          estado: t.estado
-        }))
-      };
-    });
-
-    return res.json({
-      response: 'Ok',
-      resumen: resumen
-    });
-
-  } catch (error) {
-    console.error('Error en /resumenTickets:', error);
-    return res.status(500).json({ response: 'Error', mensaje: error.message });
-  }
-});
-
-
-// ==========================================
-// 2. ACCESO A TICKETS (/getTicket)
-// ==========================================
-app.all('/getTicket', async (req, res) => {
-  // Extraer parámetros según sea GET o POST
-  const idUsuario = req.method === 'GET' ? (req.query.ID || req.query.contacto) : req.body.ID;
-  const password = req.method === 'GET' ? req.query.PASSWORD : req.body.PASSWORD;
-  const ticketID = req.method === 'GET' ? req.query.TICKET : req.body.TICKET;
-
-  if (!idUsuario || !password || !ticketID) {
-    return res.status(400).json({ response: 'Error', mensaje: 'Faltan parámetros (ID, PASSWORD, TICKET)' });
-  }
-
-  try {
-    // 1. Validar si el cliente existe y su contraseña es correcta
-    const paramsCliente = {
-      TableName: 'cliente',
-      FilterExpression: 'contacto = :c OR id = :id',
-      ExpressionAttributeValues: {
-        ':c': idUsuario,
-        ':id': idUsuario
-      }
-    };
-
-    const dataCliente = await docClient.scan(paramsCliente).promise();
-    const cliente = dataCliente.Items && dataCliente.Items[0];
-
-    // Requisito del TP: Si el cliente no existe/inválido, retornar error SIN consultar el ticket
-    if (!cliente || cliente.password !== password) {
-      return res.status(401).json({ response: 'Error', mensaje: 'Cliente no existe o contraseña incorrecta' });
-    }
-
-    // 2. Consultar el ticket solicitado
-    const paramsTicket = {
-      TableName: 'ticket',
-      KeyConditionExpression: 'id = :tid',
-      ExpressionAttributeValues: {
-        ':tid': ticketID
-      }
-    };
-
-    // Si la tabla usa scan por no conocer la clave primaria exacta:
-    const dataTicket = await docClient.scan({
-      TableName: 'ticket',
-      FilterExpression: 'id = :tid OR ticketID = :tid',
-      ExpressionAttributeValues: { ':tid': ticketID }
-    }).promise();
-
-    const ticketEncontrado = dataTicket.Items && dataTicket.Items[0];
-
-    if (!ticketEncontrado) {
-      return res.status(444).json({ response: 'Error', mensaje: 'El ticket especificado no existe' });
-    }
-
-    // 3. Retornar los datos combinados
-    return res.json({
-      response: 'Ok',
-      clienteID: cliente.id,
-      contacto: cliente.contacto,
-      ticket: ticketEncontrado
-    });
-
-  } catch (error) {
-    console.error('Error en /getTicket:', error);
-    return res.status(500).json({ response: 'Error', mensaje: error.message });
-  }
-});
-
-
-/*-------------------------------------------------------------------------------------------
-                            Funciones y Servicios
- *-------------------------------------------------------------------------------------------*/
+/*==================== FUNCIONES AUXILIARES ====================*/
 
 /*-----------
 función para hacer el parse de un archivo JSON
@@ -201,6 +50,40 @@ function jsonParser(keyValue,stringValue) {
     var objectValue = JSON.parse(string);
     return objectValue[keyValue];
 }
+
+/*---------
+Función para realizar el SCAN de un DB de cliente usando contacto como clave para la búsqueda (no es clave formal del DB)
+*/
+async function scanDb(contacto) {
+    var docClient = new AWS.DynamoDB.DocumentClient();
+    const scanKey=contacto;
+    const paramsScan = { // ScanInput
+      TableName: "cliente", // required
+      Select: "ALL_ATTRIBUTES" || "ALL_PROJECTED_ATTRIBUTES" || "SPECIFIC_ATTRIBUTES" || "COUNT",
+      FilterExpression : 'contacto = :contacto',
+      ExpressionAttributeValues : {':contacto' : scanKey}
+    };      
+    var objectPromise = await docClient.scan(paramsScan).promise().then((data) => {
+          return data.Items 
+    });  
+    return objectPromise;
+}
+async function scanDbTicket(clienteID) {
+    var docClient = new AWS.DynamoDB.DocumentClient();
+    const scanKey=clienteID;
+    const paramsScan = { // ScanInput
+      TableName: "ticket", // required
+      Select: "ALL_ATTRIBUTES" || "ALL_PROJECTED_ATTRIBUTES" || "SPECIFIC_ATTRIBUTES" || "COUNT",
+      FilterExpression : 'clienteID = :clienteID',
+      ExpressionAttributeValues : {':clienteID' : scanKey}
+    };      
+    var objectPromise = await docClient.scan(paramsScan).promise().then((data) => {
+          return data.Items 
+    });  
+    return objectPromise;
+}
+
+/*==================== API REST DE CLIENTES ====================*/
 
 /*-------------------------------------------------------------------------------------------
                             SERVER API 
@@ -219,7 +102,7 @@ app.get('/api/cliente', (req,res) => {
   /api/loginCliente
   Esta API permite acceder a un cliente por ID y comparar la password pasada en un JSON en el cuerpo con la indicada en el DB
 */  
-/* MODIFICACION PTO 1:Busca en la tabla cliente el registro cuyo contacto coincide con el correo recibido.*/
+/* MODIFICACION:Busca en la tabla cliente el registro cuyo contacto coincide con el correo recibido.*/
 
 app.post('/api/loginCliente', async (req, res) => {
     const { contacto } = req.body;
@@ -468,43 +351,150 @@ app.post('/api/resetCliente', async (req, res) => {
     }
 });
 /*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*
-/*                                                       API REST ticket                                                             *
-/*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*/
 
-/*---------
-Función para realizar el SCAN de un DB de cliente usando contacto como clave para la búsqueda (no es clave formal del DB)
-*/
-async function scanDb(contacto) {
-    var docClient = new AWS.DynamoDB.DocumentClient();
-    const scanKey=contacto;
-    const paramsScan = { // ScanInput
-      TableName: "cliente", // required
-      Select: "ALL_ATTRIBUTES" || "ALL_PROJECTED_ATTRIBUTES" || "SPECIFIC_ATTRIBUTES" || "COUNT",
-      FilterExpression : 'contacto = :contacto',
-      ExpressionAttributeValues : {':contacto' : scanKey}
-    };      
-    var objectPromise = await docClient.scan(paramsScan).promise().then((data) => {
-          return data.Items 
-    });  
-    return objectPromise;
-}
-async function scanDbTicket(clienteID) {
-    var docClient = new AWS.DynamoDB.DocumentClient();
-    const scanKey=clienteID;
-    const paramsScan = { // ScanInput
-      TableName: "ticket", // required
-      Select: "ALL_ATTRIBUTES" || "ALL_PROJECTED_ATTRIBUTES" || "SPECIFIC_ATTRIBUTES" || "COUNT",
-      FilterExpression : 'clienteID = :clienteID',
-      ExpressionAttributeValues : {':clienteID' : scanKey}
-    };      
-    var objectPromise = await docClient.scan(paramsScan).promise().then((data) => {
-          return data.Items 
-    });  
-    return objectPromise;
-}
+/*==========TICKETS Y ESTADÍSTICAS ==========*/
+
+app.all('/resumenTickets', async (req, res) => {
+  
+  const idUsuario = req.method === 'GET' 
+    ? (req.query.ID || req.query.id || req.query.contacto) 
+    : (req.body?.ID || req.body?.id || req.body?.contacto);
+
+  const password = req.method === 'GET' 
+    ? (req.query.PASSWORD || req.query.password) 
+    : (req.body?.PASSWORD || req.body?.password);
+
+  if (!idUsuario || !password) {
+    return res.status(400).json({ response: 'Error', mensaje: 'Faltan credenciales (ID/contacto y PASSWORD)' });
+  }
+
+  try {
+  
+    const paramsCliente = {
+      TableName: 'cliente',
+      FilterExpression: 'contacto = :c OR id = :id',
+      ExpressionAttributeValues: {
+        ':c': String(idUsuario),
+        ':id': String(idUsuario)
+      }
+    };
+
+    const dataCliente = await docClient.scan(paramsCliente).promise();
+    const cliente = dataCliente.Items && dataCliente.Items[0];
+
+    if (!cliente || cliente.password !== password) {
+      return res.status(401).json({ response: 'Error', mensaje: 'Credenciales inválidas' });
+    }
+
+    
+    const [todosClientes, todosTickets] = await Promise.all([
+      docClient.scan({ TableName: 'cliente' }).promise(),
+      docClient.scan({ TableName: 'ticket' }).promise()
+    ]);
+
+    
+    const resumen = (todosClientes.Items || []).map(cli => {
+      const cliId = String(cli.id || cli.clienteID || '');
+      const cliContacto = String(cli.contacto || '');
+
+      const ticketsDelCliente = (todosTickets.Items || []).filter(t => {
+        const tCliente = String(t.clienteID || t.cliente || '');
+        return (tCliente !== '' && (tCliente === cliId || tCliente === cliContacto));
+      });
+      return {
+        clienteID: cli.id || cli.clienteID,
+        contacto: cli.contacto,
+        cantidadTickets: ticketsDelCliente.length,
+        tickets: ticketsDelCliente.map(t => ({
+          ticketID: t.id || t.ticketID,
+          fechaApertura: t.fecha_apertura,
+          estado: t.estado_solucion
+        }))
+      };
+    });
+
+    return res.json({
+      response: 'Ok',
+      resumen: resumen
+    });
+  } catch (error) {
+    console.error('Error en /resumenTickets:', error);
+    return res.status(500).json({ response: 'Error', mensaje: error.message });
+  }
+});
+
+
+// ==========================================
+// ACCESO A TICKETS (/getTicket)
+// ==========================================
+app.all('/getTicket', async (req, res) => {
+  // Extraer parámetros según sea GET o POST
+  const idUsuario = req.method === 'GET' ? (req.query.ID || req.query.contacto) : req.body.ID;
+  const password = req.method === 'GET' ? req.query.PASSWORD : req.body.PASSWORD;
+  const ticketID = req.method === 'GET' ? req.query.TICKET : req.body.TICKET;
+
+  if (!idUsuario || !password || !ticketID) {
+    return res.status(400).json({ response: 'Error', mensaje: 'Faltan parámetros (ID, PASSWORD, TICKET)' });
+  }
+
+  try {
+    // 1. Validar si el cliente existe y su contraseña es correcta
+    const paramsCliente = {
+      TableName: 'cliente',
+      FilterExpression: 'contacto = :c OR id = :id',
+      ExpressionAttributeValues: {
+        ':c': idUsuario,
+        ':id': idUsuario
+      }
+    };
+
+    const dataCliente = await docClient.scan(paramsCliente).promise();
+    const cliente = dataCliente.Items && dataCliente.Items[0];
+
+    // Requisito del TP: Si el cliente no existe/inválido, retornar error SIN consultar el ticket
+    if (!cliente || cliente.password !== password) {
+      return res.status(401).json({ response: 'Error', mensaje: 'Cliente no existe o contraseña incorrecta' });
+    }
+
+    // Consultar el ticket solicitado
+    const paramsTicket = {
+      TableName: 'ticket',
+      KeyConditionExpression: 'id = :tid',
+      ExpressionAttributeValues: {
+        ':tid': ticketID
+      }
+    };
+
+    // Si la tabla usa scan por no conocer la clave primaria exacta:
+    const dataTicket = await docClient.scan({
+      TableName: 'ticket',
+      FilterExpression: 'id = :tid OR ticketID = :tid',
+      ExpressionAttributeValues: { ':tid': ticketID }
+    }).promise();
+
+    const ticketEncontrado = dataTicket.Items && dataTicket.Items[0];
+
+    if (!ticketEncontrado) {
+      return res.status(404).json({ response: 'Error', mensaje: 'El ticket especificado no existe' });
+    }
+
+    // Retornar los datos combinados
+    return res.json({
+      response: 'Ok',
+      clienteID: cliente.id,
+      contacto: cliente.contacto,
+      ticket: ticketEncontrado
+    });
+
+  } catch (error) {
+    console.error('Error en /getTicket:', error);
+    return res.status(500).json({ response: 'Error', mensaje: error.message });
+  }
+});
+
 /*----------
   listarTicket
-  API REST para obtener todos los tickets de un clienteID
+   obtener todos los tickets de un clienteID
 */  
 app.post('/api/listarTicket', (req,res) => {
 
@@ -529,43 +519,9 @@ app.post('/api/listarTicket', (req,res) => {
 
 });
 
-/*---------
-  getTicket
-  API REST para obtener los detalles de un ticket
-*/
-app.post('/api/getTicket', (req,res) => {
-    const {id}  = req.body;
-    console.log("getTicket: id("+id+")");
- 
-    if (!id) {
-        res.status(400).send({response : "ERROR" , message: "ticket id no informada"});
-        return;
-    }
-    var params = {
-        TableName: "ticket",
-        Key: {
-            "id" : id
-            //"clienteID": "0533a95d-7eef-4c6b-b753-1a41c9d1fbd0"   
-            //"id"       : "e08905a8-4aab-45bf-9948-4ba2b8602ced"
-        }
-    };
-    docClient.get(params, function (err, data) {
-        if (err) {
-            res.status(400).send(JSON.stringify({response : "ERROR", message : "DB access error "+err}));
-        }
-        else {
-            if (Object.keys(data).length == 0) {
-                res.status(400).send({response : "ERROR" , message : "ticket invalido"});
-            } else {
-                res.status(200).send(JSON.stringify({response : "OK", "data" : data}));    
-            }    
-        }
-    })
-});
-
 /*-----------------
 /api/addTicket
-API REST para agregar ticket (genera id)
+agregar ticket (genera id)
 */
 app.post('/api/addTicket', (req,res) => {
 
@@ -608,7 +564,7 @@ app.post('/api/addTicket', (req,res) => {
 
 /*--------
 /api/updateTicket
-Dado un id actualiza el ticket, debe informarse la totalidad del ticket excepto ultimo_contacto
+Dado un id actualiza el ticket, debe informarse la totalidad del ticket
 */
 app.post('/api/updateTicket', (req,res) => {
 
@@ -710,6 +666,7 @@ app.post('/api/updateTicket', (req,res) => {
 
 });
 /*-------------------------------------------------[ Fin del API REST ]-------------------------------------------------------------*/
+
 app.listen(
     PORT,
     () => console.log(`Servidor listo en http://localhost:${PORT}`)
