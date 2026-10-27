@@ -290,66 +290,56 @@ app.post('/api/updateCliente', (req,res) => {
 /api/resetCliente
 Permite cambiar la password de un cliente
 */
-app.post('/api/resetCliente', (req,res) => {
-    
-    const {id}       = req.body;
-    const {password} = req.body;
- 
-    if (!id) {
-        res.status(400).send({response : "ERROR" , message: "Id no informada"});
-        return;
+app.post('/api/resetCliente', async (req, res) => {
+    const { contacto, password } = req.body;
+
+    if (!contacto) {
+        return res.status(400).send({
+            response: "ERROR",
+            message: "Correo no informado"
+        });
     }
 
     if (!password) {
-        res.status(400).send({response : "ERROR" , message: "Password no informada"});
-        return;
+        return res.status(400).send({
+            response: "ERROR",
+            message: "Password no informada"
+        });
     }
 
-    var params = {
-        TableName: "cliente",
-        Key: {
-            "id" : id
-            //test use "id": "0533a95d-7eef-4c6b-b753-1a41c9d1fbd0"   
-             }
+    try {
+        const clientes = await scanDb(contacto);
+        const cliente = clientes[0];
+
+        if (!cliente) {
+            return res.status(404).send({
+                response: "ERROR",
+                message: "Cliente no existe"
+            });
+        }
+
+        const paramsUpdate = {
+            TableName: "cliente",
+            Key: { id: cliente.id },
+            UpdateExpression: "SET #p = :p",
+            ExpressionAttributeNames: { "#p": "password" },
+            ExpressionAttributeValues: { ":p": password },
+            ReturnValues: "NONE"
         };
-        
-    docClient.get(params, function (err, data) {
-        if (err)  {
-            res.status(400).send(JSON.stringify({response : "ERROR", message : "DB access error "+ null}));
-            return;
-        } else {
 
-            if (Object.keys(data).length == 0) {
-                res.status(400).send(JSON.stringify({"response":"ERROR",message : "Cliente no existe"}),null,2);
-                return;
-            } else {
+        await docClient.update(paramsUpdate).promise();
 
-                const paramsUpdate = { 
-   
-                    ExpressionAttributeNames: { 
-                         "#p": "password" 
-                    }, 
-                    ExpressionAttributeValues: { 
-                        ":p": password 
-                   }, 
-                   Key: { 
-                       "id": id 
-                   }, 
-                   ReturnValues: "ALL_NEW", 
-                   TableName: "cliente", 
-                   UpdateExpression: "SET #p = :p" 
-                };
-                docClient.update(paramsUpdate, function (err, data) {
-                    if (err)  {
-                        res.status(400).send(JSON.stringify({response : "ERROR", message : "DB access error "+err}));
-                        return;
-                    } else {
-                        res.status(200).send(JSON.stringify({response : "OK", message : "updated" , "data": data}));
-                    }    
-                });    
-            }
-        }    
-    })
+        return res.status(200).send({
+            response: "OK",
+            message: "Password actualizada"
+        });
+    } catch (error) {
+        console.error("Error al restablecer password:", error);
+        return res.status(500).send({
+            response: "ERROR",
+            message: "No se pudo actualizar la password"
+        });
+    }
 });
 /*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*
 /*                                                       API REST ticket                                                             *
