@@ -1,7 +1,7 @@
 const formE1 = document.querySelector('.form');
 
 formE1.addEventListener('submit', async (event) => {
-    // intercepta el submit del formulario.
+    // Intercepta el envío para evitar que se recargue la página.
     event.preventDefault();
 
     const formData = new FormData(formE1);
@@ -13,17 +13,31 @@ formE1.addEventListener('submit', async (event) => {
     resultado1.textContent = '';
     resultado2.textContent = '';
 
-    // Verifica que se hayan completado los campos.
-    if (!data.contacto || !data.nombre || !data.password) {
+    // Verifica que estén completos los campos.
+    if (
+        !data.contacto ||
+        !data.nombre ||
+        !data.password ||
+        !data.passwordConfirm
+    ) {
         resultado1.style.color = 'red';
-        resultado1.textContent = 'Complete correo, nombre y contraseña.';
+        resultado1.textContent =
+            'Complete correo, nombre y ambas contraseñas.';
         return;
     }
 
-    // en una casilla marcada, FormData guarda el valor "on".
+    // Compara las contraseñas antes de contactar al servidor.
+    if (data.password !== data.passwordConfirm) {
+        resultado1.style.color = 'red';
+        resultado1.textContent = 'Las contraseñas no coinciden.';
+        return;
+    }
+
+    // FormData guarda "on" cuando la casilla está marcada.
     if (data.termscondition !== 'on') {
         resultado2.style.color = 'red';
-        resultado2.textContent = 'Debe aceptar los términos y condiciones.';
+        resultado2.textContent =
+            'Debe aceptar los términos y condiciones.';
         return;
     }
 
@@ -31,7 +45,7 @@ formE1.addEventListener('submit', async (event) => {
         addCliente: 'http://localhost:8080/api/addCliente'
     };
 
-    // prepara los datos que el servidor necesita para crear el cliente.
+    // Solo se envían los datos que necesita la API.
     const cliente = {
         contacto: data.contacto,
         nombre: data.nombre,
@@ -52,9 +66,7 @@ formE1.addEventListener('submit', async (event) => {
 
         if (respuesta.response === 'OK') {
             alert('Registro realizado. Ahora podés iniciar sesión.');
-
-            window.location.href =
-                'http://127.0.0.1:5500/HTML/loginClient.html';
+            window.location.href = 'loginClient.html';
         } else {
             resultado1.style.color = 'red';
             resultado1.textContent =
